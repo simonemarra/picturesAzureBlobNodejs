@@ -1,14 +1,16 @@
 const { ContainerClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
 const express = require("express");
 const bodyParser = require("body-parser");
+
 // Load the .env file if it exists
 require("dotenv").config();
 
 const app = express();
 const port = 3001;
 
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+// app.use(bodyParser.urlencoded({ extended: true }));
+// app.use(bodyParser.json());
+app.use(bodyParser.raw());
 // add timestamps in front of log messages
 require("console-stamp")(console, "yy-mm-dd,HH:MM:ss.l");
 
@@ -72,8 +74,39 @@ async function streamToBuffer(readableStream) {
   });
 }
 
-app.post("/picture", (req, res, next) => {
-  console.log("proxyreq");
+app.post("/picture/:filename", async (req, res, next) => {
+  const blobFileName = req.params.filename; //`${req.query["uid"]}_${req.query["userid"]}`;
+  console.log(`POST picture filename: ${blobFileName}`);
+
+  const account = process.env.ACCOUNT_NAME || '';
+  const accountKey = process.env.ACCOUNT_KEY || '';
+  const containerName = process.env.CONTAINER_NAME || '';
+  // Use StorageSharedKeyCredential with storage account and account key
+  // StorageSharedKeyCredential is only available in Node.js runtime, not in browsers
+  const sharedKeyCredential = new StorageSharedKeyCredential(
+    account,
+    accountKey
+  );
+
+  // Create a container
+  const containerClient = new ContainerClient(
+    `https://${account}.blob.core.windows.net/${containerName}`,
+    sharedKeyCredential
+  );
+
+  // Downloading blob from the snapshot
+  const blobName = blobFileName;
+  const blobClient = containerClient.getBlobClient(blobName);
+  const blockBlobClient = blobClient.getBlockBlobClient();
+
+  // console.log('req body ', req.body);
+  const content = req.body;
+  const uploadBlobResponse = await blockBlobClient.upload(content, Buffer.byteLength(content));
+  console.log(`Uploaded block blob ${blobName} successfully`, uploadBlobResponse.requestId);
+
+  // res.uploadBlobResponse;
+  res.status(uploadBlobResponse._response.status).json({requestId: uploadBlobResponse.requestId});
+  // res = uploadBlobResponse._response;
 });
 
 app.listen(port, () => {
